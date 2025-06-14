@@ -2,9 +2,38 @@
  * Service for handling NotePlan notes interactions
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+interface Note {
+  id: string;
+  title: string;
+  content: string;
+  created: string;
+  modified: string;
+  folder: string;
+  filePath?: string;
+  filename?: string;
+  type?: string;
+}
+
+interface CreateNoteParams {
+  title: string;
+  content?: string;
+  folder?: string;
+}
+
+interface CreateDailyNoteParams {
+  date?: string;
+  content?: string;
+}
+
+interface UpdateNoteParams {
+  title?: string;
+  content?: string;
+  folder?: string;
+}
 
 // NotePlan data directory path
 const NOTEPLAN_BASE_PATH = path.join(
@@ -15,12 +44,12 @@ const CALENDAR_PATH = path.join(NOTEPLAN_BASE_PATH, 'Calendar');
 const NOTES_PATH = path.join(NOTEPLAN_BASE_PATH, 'Notes');
 
 // Cache for notes data
-let notesCache = [];
-let lastCacheUpdate = 0;
+let notesCache: Note[] = [];
+let lastCacheUpdate: number = 0;
 const CACHE_DURATION = 5000; // 5 seconds
 
 // Mock database for notes - fallback if NotePlan directory not found
-const notesDb = [
+const notesDb: Note[] = [
   { 
     id: 'note1', 
     title: 'Sample Note 1', 
@@ -49,9 +78,8 @@ const notesDb = [
 
 /**
  * Check if NotePlan directory exists
- * @returns {boolean} True if NotePlan directory exists
  */
-function isNotePlanAvailable() {
+function isNotePlanAvailable(): boolean {
   try {
     return fs.existsSync(NOTEPLAN_BASE_PATH) && 
            fs.existsSync(CALENDAR_PATH) && 
@@ -63,11 +91,8 @@ function isNotePlanAvailable() {
 
 /**
  * Parse markdown file to extract metadata
- * @param {string} filePath - Path to the markdown file
- * @param {string} folder - Folder type (Calendar/Notes)
- * @returns {Object} Note object
  */
-function parseMarkdownFile(filePath, folder) {
+function parseMarkdownFile(filePath: string, folder: string): Note | null {
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     const stats = fs.statSync(filePath);
@@ -106,12 +131,9 @@ function parseMarkdownFile(filePath, folder) {
 
 /**
  * Scan directory for markdown files
- * @param {string} dirPath - Directory path to scan
- * @param {string} folder - Folder type
- * @returns {Array} Array of note objects
  */
-function scanNotesDirectory(dirPath, folder) {
-  const notes = [];
+function scanNotesDirectory(dirPath: string, folder: string): Note[] {
+  const notes: Note[] = [];
   
   try {
     if (!fs.existsSync(dirPath)) {
@@ -145,15 +167,14 @@ function scanNotesDirectory(dirPath, folder) {
 
 /**
  * Load all notes from NotePlan directories
- * @returns {Array} List of notes
  */
-function loadNotesFromFileSystem() {
+function loadNotesFromFileSystem(): Note[] {
   if (!isNotePlanAvailable()) {
     console.warn('NotePlan directory not found, using mock data');
     return notesDb;
   }
   
-  const notes = [];
+  const notes: Note[] = [];
   
   // Load calendar notes
   const calendarNotes = scanNotesDirectory(CALENDAR_PATH, 'Calendar');
@@ -163,14 +184,13 @@ function loadNotesFromFileSystem() {
   const regularNotes = scanNotesDirectory(NOTES_PATH, 'Notes');
   notes.push(...regularNotes);
   
-  return notes.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+  return notes.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 }
 
 /**
  * Get all notes with caching
- * @returns {Array} List of notes
  */
-function getAllNotes() {
+function getAllNotes(): Note[] {
   const now = Date.now();
   
   // Use cache if still valid
@@ -187,20 +207,16 @@ function getAllNotes() {
 
 /**
  * Get a note by ID
- * @param {string} id - Note ID
- * @returns {Object|null} Note object or null if not found
  */
-function getNoteById(id) {
+function getNoteById(id: string): Note | null {
   const notes = getAllNotes();
   return notes.find(note => note.id === id) || null;
 }
 
 /**
  * Search notes by title or content
- * @param {string} query - Search query
- * @returns {Array} List of matching notes
  */
-function searchNotes(query) {
+function searchNotes(query: string): Note[] {
   const notes = getAllNotes();
   const lowerQuery = query.toLowerCase();
   return notes.filter(note => 
@@ -211,23 +227,18 @@ function searchNotes(query) {
 
 /**
  * Get notes by folder
- * @param {string} folder - Folder name
- * @returns {Array} List of notes in the folder
  */
-function getNotesByFolder(folder) {
+function getNotesByFolder(folder: string): Note[] {
   const notes = getAllNotes();
   return notes.filter(note => note.folder === folder || note.folder.startsWith(folder + '/'));
 }
 
 /**
  * Create a daily note with today's date
- * @param {Object} options - Options for daily note creation
- * @param {string} options.template - Template content for the daily note
- * @returns {Object} Created note object
  */
-function createDailyNote(options = {}) {
-  const today = new Date();
-  const dateStr = today.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD format
+function createDailyNote(options: CreateDailyNoteParams = {}): Note {
+  const noteDate = options.date ? new Date(options.date) : new Date();
+  const dateStr = noteDate.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD format
   const noteId = `calendar-${dateStr}`;
   
   // Check if daily note already exists
@@ -248,9 +259,9 @@ function createDailyNote(options = {}) {
 
 
 ---
-Created: ${today.toISOString()}`;
+Created: ${noteDate.toISOString()}`;
   
-  const content = options.template || defaultTemplate;
+  const content = options.content || defaultTemplate;
   
   if (isNotePlanAvailable()) {
     // Write to actual NotePlan directory
@@ -263,18 +274,18 @@ Created: ${today.toISOString()}`;
       lastCacheUpdate = 0;
       
       // Return the newly created note
-      return parseMarkdownFile(filePath, 'Calendar');
+      return parseMarkdownFile(filePath, 'Calendar')!;
     } catch (error) {
-      throw new Error(`Failed to create daily note: ${error.message}`);
+      throw new Error(`Failed to create daily note: ${(error as Error).message}`);
     }
   } else {
     // Fallback to mock database
-    const newNote = {
+    const newNote: Note = {
       id: noteId,
       title: `Daily Note - ${dateStr}`,
       content,
-      created: today.toISOString(),
-      modified: today.toISOString(),
+      created: noteDate.toISOString(),
+      modified: noteDate.toISOString(),
       folder: 'Calendar',
       type: 'daily'
     };
@@ -286,13 +297,8 @@ Created: ${today.toISOString()}`;
 
 /**
  * Create a new note
- * @param {Object} noteData - Note data
- * @param {string} noteData.title - Note title
- * @param {string} noteData.content - Note content
- * @param {string} noteData.folder - Note folder (default: 'Notes')
- * @returns {Object} Created note object
  */
-function createNote(noteData) {
+function createNote(noteData: CreateNoteParams): Note {
   if (!noteData.title) {
     throw new Error('Note title is required');
   }
@@ -338,13 +344,13 @@ function createNote(noteData) {
       lastCacheUpdate = 0;
       
       // Return the newly created note
-      return parseMarkdownFile(filePath, targetFolder);
+      return parseMarkdownFile(filePath, targetFolder)!;
     } catch (error) {
-      throw new Error(`Failed to create note: ${error.message}`);
+      throw new Error(`Failed to create note: ${(error as Error).message}`);
     }
   } else {
     // Fallback to mock database
-    const newNote = {
+    const newNote: Note = {
       id: noteId,
       title: noteData.title,
       content,
@@ -360,14 +366,8 @@ function createNote(noteData) {
 
 /**
  * Update an existing note
- * @param {string} id - Note ID
- * @param {Object} updates - Updates to apply
- * @param {string} updates.title - New title
- * @param {string} updates.content - New content
- * @param {string} updates.folder - New folder
- * @returns {Object} Updated note object
  */
-function updateNote(id, updates) {
+function updateNote(id: string, updates: UpdateNoteParams): Note {
   const existingNote = getNoteById(id);
   if (!existingNote) {
     throw new Error(`Note with id ${id} not found`);
@@ -411,9 +411,9 @@ function updateNote(id, updates) {
       lastCacheUpdate = 0;
       
       // Return updated note
-      return parseMarkdownFile(existingNote.filePath, existingNote.folder);
+      return parseMarkdownFile(existingNote.filePath, existingNote.folder)!;
     } catch (error) {
-      throw new Error(`Failed to update note: ${error.message}`);
+      throw new Error(`Failed to update note: ${(error as Error).message}`);
     }
   } else {
     // Fallback to mock database
@@ -423,7 +423,7 @@ function updateNote(id, updates) {
     }
     
     const note = notesDb[noteIndex];
-    const updatedNote = {
+    const updatedNote: Note = {
       ...note,
       ...updates,
       modified: new Date().toISOString()
@@ -434,7 +434,7 @@ function updateNote(id, updates) {
   }
 }
 
-module.exports = {
+export const noteService = {
   getAllNotes,
   getNoteById,
   searchNotes,

@@ -34,13 +34,18 @@ npm install -g noteplan-mcp
    npm install
    ```
 
-2. **Test the server**:
+2. **Build the project**:
+   ```bash
+   npm run build
+   ```
+
+3. **Test the server**:
    ```bash
    npm start
    ```
    You should see: "NotePlan MCP server running on stdio"
 
-3. **Configure Claude Desktop** (see detailed setup below)
+4. **Configure Claude Desktop** (see detailed setup below)
 
 ## Claude Desktop Configuration
 
@@ -61,7 +66,7 @@ Add this configuration to your `claude_desktop_config.json`:
   "mcpServers": {
     "noteplan": {
       "command": "node",
-      "args": ["/absolute/path/to/noteplan-mcp/src/mcp-server.js"],
+      "args": ["/absolute/path/to/noteplan-mcp/build/index.js"],
       "cwd": "/absolute/path/to/noteplan-mcp"
     }
   }
@@ -106,7 +111,13 @@ Claude will automatically use the appropriate NotePlan MCP tools to fulfill thes
 ```bash
 npm run dev
 ```
-This starts the server with auto-restart on file changes using nodemon.
+This builds the TypeScript and starts the server with auto-restart on file changes using nodemon.
+
+### Building
+```bash
+npm run build
+```
+Compiles TypeScript to JavaScript in the `build/` directory.
 
 ### Testing
 ```bash
@@ -123,12 +134,17 @@ npm run lint
 ```
 noteplan-mcp/
 ├── src/
-│   ├── mcp-server.js          # Main MCP server implementation
+│   ├── index.ts               # Main MCP server implementation
 │   ├── index.js               # HTTP server (alternative)
 │   └── services/
-│       └── noteService.js     # Note management logic
+│       └── noteService.ts     # Note management logic
+├── build/                     # Compiled JavaScript output
+│   ├── index.js               # Compiled MCP server
+│   └── services/
+│       └── noteService.js     # Compiled note service
 ├── tests/
 │   └── index.test.js          # Test files
+├── tsconfig.json              # TypeScript configuration
 ├── package.json
 └── README.md
 ```
@@ -156,12 +172,18 @@ noteplan-mcp/
 1. Test the server manually:
    ```bash
    cd /path/to/noteplan-mcp
+   npm run build
    npm start
    ```
 
-2. Check Claude Desktop logs for connection status
+2. Use the MCP inspector for debugging:
+   ```bash
+   npm run inspector
+   ```
 
-3. Try a simple command in Claude: "Can you show me my notes?"
+3. Check Claude Desktop logs for connection status
+
+4. Try a simple command in Claude: "Can you show me my notes?"
 
 ## Configuration
 
