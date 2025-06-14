@@ -14,9 +14,7 @@ const server = new McpServer({
 // Tool: Get all notes
 server.tool(
   'get_notes',
-  {
-    description: 'Get all notes from NotePlan',
-  },
+  {},
   async () => {
     const notes = noteService.getAllNotes();
     return {
@@ -34,10 +32,7 @@ server.tool(
 server.tool(
   'get_note_by_id',
   {
-    description: 'Get a specific note by its ID',
-    inputSchema: z.object({
-      id: z.string().describe('The ID of the note to retrieve'),
-    }),
+    id: z.string().describe('The ID of the note to retrieve'),
   },
   async ({ id }) => {
     const note = noteService.getNoteById(id);
@@ -59,10 +54,7 @@ server.tool(
 server.tool(
   'search_notes',
   {
-    description: 'Search notes by query string',
-    inputSchema: z.object({
-      query: z.string().describe('The search query'),
-    }),
+    query: z.string().describe('The search query'),
   },
   async ({ query }) => {
     const results = noteService.searchNotes(query);
@@ -81,10 +73,7 @@ server.tool(
 server.tool(
   'get_notes_by_folder',
   {
-    description: 'Get notes from a specific folder',
-    inputSchema: z.object({
-      folder: z.string().describe('The folder name to search in'),
-    }),
+    folder: z.string().describe('The folder name to search in'),
   },
   async ({ folder }) => {
     const notes = noteService.getNotesByFolder(folder);
@@ -103,12 +92,9 @@ server.tool(
 server.tool(
   'create_note',
   {
-    description: 'Create a new note',
-    inputSchema: z.object({
-      title: z.string().describe('The title of the note'),
-      content: z.string().optional().describe('The content of the note'),
-      folder: z.string().optional().describe('The folder to create the note in'),
-    }),
+    title: z.string().describe('The title of the note'),
+    content: z.string().optional().describe('The content of the note'),
+    folder: z.string().optional().describe('The folder to create the note in'),
   },
   async ({ title, content, folder }) => {
     const newNote = noteService.createNote({ title, content, folder });
@@ -127,11 +113,8 @@ server.tool(
 server.tool(
   'create_daily_note',
   {
-    description: 'Create a daily note for today or a specific date',
-    inputSchema: z.object({
-      date: z.string().optional().describe('The date for the daily note (YYYY-MM-DD format)'),
-      content: z.string().optional().describe('Initial content for the daily note'),
-    }),
+    date: z.string().optional().describe('The date for the daily note (YYYY-MM-DD format)'),
+    content: z.string().optional().describe('Initial content for the daily note'),
   },
   async ({ date, content }) => {
     const dailyNote = noteService.createDailyNote({ date, content });
@@ -150,12 +133,9 @@ server.tool(
 server.tool(
   'update_note',
   {
-    description: 'Update an existing note',
-    inputSchema: z.object({
-      id: z.string().describe('The ID of the note to update'),
-      title: z.string().optional().describe('New title for the note'),
-      content: z.string().optional().describe('New content for the note'),
-    }),
+    id: z.string().describe('The ID of the note to update'),
+    title: z.string().optional().describe('New title for the note'),
+    content: z.string().optional().describe('New content for the note'),
   },
   async ({ id, title, content }) => {
     const updates: any = {};
