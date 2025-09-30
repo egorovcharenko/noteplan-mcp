@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const noteService = require('./services/noteService');
+import express from 'express';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import { noteService } from '../build/services/noteService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;

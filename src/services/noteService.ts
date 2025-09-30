@@ -90,19 +90,20 @@ function isNotePlanAvailable(): boolean {
 }
 
 /**
- * Parse markdown file to extract metadata
+ * Parse note file (markdown or text) to extract metadata
  */
-function parseMarkdownFile(filePath: string, folder: string): Note | null {
+function parseNoteFile(filePath: string, folder: string): Note | null {
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     const stats = fs.statSync(filePath);
-    const filename = path.basename(filePath, '.md');
+    const ext = path.extname(filePath);
+    const filename = path.basename(filePath, ext);
     
     // Extract title from first line or use filename
     const lines = content.split('\n');
     let title = filename;
     
-    // Look for markdown title (# Title)
+    // Look for markdown-style title (# Title)
     for (const line of lines) {
       if (line.startsWith('# ') && line.length > 2) {
         title = line.substring(2).trim();
@@ -130,7 +131,7 @@ function parseMarkdownFile(filePath: string, folder: string): Note | null {
 }
 
 /**
- * Scan directory for markdown files
+ * Scan directory for note files (.md and .txt)
  */
 function scanNotesDirectory(dirPath: string, folder: string): Note[] {
   const notes: Note[] = [];
@@ -143,9 +144,9 @@ function scanNotesDirectory(dirPath: string, folder: string): Note[] {
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
     
     for (const item of items) {
-      if (item.isFile() && item.name.endsWith('.md')) {
+      if (item.isFile() && (item.name.endsWith('.md') || item.name.endsWith('.txt'))) {
         const filePath = path.join(dirPath, item.name);
-        const note = parseMarkdownFile(filePath, folder);
+        const note = parseNoteFile(filePath, folder);
         if (note) {
           notes.push(note);
         }
@@ -210,7 +211,27 @@ function getAllNotes(): Note[] {
  */
 function getNoteById(id: string): Note | null {
   const notes = getAllNotes();
-  return notes.find(note => note.id === id) || null;
+  
+  // Try exact match first
+  let note = notes.find(note => note.id === id);
+  if (note) return note;
+  
+  // Try with calendar prefix for date-like IDs
+  if (/^\d{8}$/.test(id)) {
+    // If it's an 8-digit date (YYYYMMDD), try with calendar prefix
+    note = notes.find(note => note.id === `calendar-${id}`);
+    if (note) return note;
+  }
+  
+  // Try converting dash format to no-dash format for calendar notes
+  if (/^\d{4}-\d{2}-\d{2}$/.test(id)) {
+    // Convert YYYY-MM-DD to YYYYMMDD and try with calendar prefix
+    const dateStr = id.replace(/-/g, '');
+    note = notes.find(note => note.id === `calendar-${dateStr}`);
+    if (note) return note;
+  }
+  
+  return null;
 }
 
 /**
@@ -265,7 +286,7 @@ Created: ${noteDate.toISOString()}`;
   
   if (isNotePlanAvailable()) {
     // Write to actual NotePlan directory
-    const filePath = path.join(CALENDAR_PATH, `${dateStr}.md`);
+    const filePath = path.join(CALENDAR_PATH, `${dateStr}.txt`);
     try {
       fs.writeFileSync(filePath, content, 'utf8');
       
@@ -274,7 +295,7 @@ Created: ${noteDate.toISOString()}`;
       lastCacheUpdate = 0;
       
       // Return the newly created note
-      return parseMarkdownFile(filePath, 'Calendar')!;
+      return parseNoteFile(filePath, 'Calendar')!;
     } catch (error) {
       throw new Error(`Failed to create daily note: ${(error as Error).message}`);
     }
@@ -315,7 +336,7 @@ function createNote(noteData: CreateNoteParams): Note {
   const filename = `${sanitizedTitle}-${Date.now()}`;
   const noteId = `note-${filename}`;
   
-  // Prepare content with title as markdown header
+  // Prepare content with title as markdown-style header
   const content = noteData.content ? 
     `# ${noteData.title}\n\n${noteData.content}` : 
     `# ${noteData.title}\n\n`;
@@ -334,7 +355,7 @@ function createNote(noteData: CreateNoteParams): Note {
       }
     }
     
-    const filePath = path.join(targetPath, `${filename}.md`);
+    const filePath = path.join(targetPath, `${filename}.txt`);
     
     try {
       fs.writeFileSync(filePath, content, 'utf8');
@@ -344,7 +365,7 @@ function createNote(noteData: CreateNoteParams): Note {
       lastCacheUpdate = 0;
       
       // Return the newly created note
-      return parseMarkdownFile(filePath, targetFolder)!;
+      return parseNoteFile(filePath, targetFolder)!;
     } catch (error) {
       throw new Error(`Failed to create note: ${(error as Error).message}`);
     }
@@ -382,7 +403,7 @@ function updateNote(id: string, updates: UpdateNoteParams): Note {
         newContent = updates.content;
       }
       
-      // If title is being updated, update the first markdown header
+      // If title is being updated, update the first markdown-style header
       if (updates.title !== undefined) {
         const lines = newContent.split('\n');
         let headerUpdated = false;
@@ -411,7 +432,7 @@ function updateNote(id: string, updates: UpdateNoteParams): Note {
       lastCacheUpdate = 0;
       
       // Return updated note
-      return parseMarkdownFile(existingNote.filePath, existingNote.folder)!;
+      return parseNoteFile(existingNote.filePath, existingNote.folder)!;
     } catch (error) {
       throw new Error(`Failed to update note: ${(error as Error).message}`);
     }
