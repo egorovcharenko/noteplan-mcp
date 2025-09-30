@@ -79,31 +79,71 @@ Add this configuration to your `claude_desktop_config.json`:
 
 After saving the configuration, restart Claude Desktop completely for the changes to take effect.
 
+## Folder Organization
+
+NotePlan MCP uses folder paths for regular notes:
+
+- **"/"** - Root notes folder (for notes at the top level)
+- **"02. Work"** - Example subfolder within notes
+- **"02. Work/10. Tasks"** - Example nested subfolder
+
+**Daily Notes:**
+Daily notes are NOT accessed via folder paths. Use dedicated tools:
+- `create_daily_note` - Create a daily note
+- `get_todays_note` - Get today's daily note
+- `get_note_by_id` with YYYYMMDD format - Get specific daily note
+
+**Important:**
+- Use `"/"` or leave folder empty when creating notes at the root level
+- Daily notes cannot be moved or renamed (they're date-based and auto-managed)
+- Never specify "Calendar" as a folder path - it will be rejected
+
 ## Available Tools
 
 Once configured, you can use these tools in Claude conversations:
 
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `get_notes` | Get all notes from NotePlan | None |
-| `get_note_by_id` | Get a specific note by ID | `id` (required) |
-| `search_notes` | Search notes by query | `query` (required) |
-| `get_notes_by_folder` | Get notes from a folder | `folder` (required) |
-| `create_note` | Create a new note | `title` (required), `content`, `folder` |
-| `create_daily_note` | Create a daily note | `date` (YYYY-MM-DD), `content` |
-| `update_note` | Update existing note | `id` (required), `title`, `content` |
+| Tool | Description | Parameters | Notes |
+|------|-------------|------------|-------|
+| `get_notes` | Get all notes from NotePlan | None | Returns both regular notes and daily notes |
+| `get_note_by_id` | Get a specific note by ID | `id` (required) | Use YYYYMMDD format for daily notes |
+| `get_note_by_title` | Get a note by exact title | `title` (required) | Case-sensitive exact match |
+| `search_notes` | Search notes by query | `query` (required) | Searches both regular and daily notes |
+| `get_notes_by_folder` | Get notes from a folder | `folder` (required) | Use "/", "02. Work", etc. Only for regular notes |
+| `get_linked_notes` | Extract and resolve note links | `id` (required) | Finds all [[Note Title]] links in a note |
+| `create_note` | Create a new note | `title` (required), `content`, `folder` | Use "/" for root, "02. Work" for subfolder |
+| `create_daily_note` | Create a daily note | `date` (YYYY-MM-DD), `content` | Creates date-based note |
+| `edit_note` | Edit note text | `id`, `old_text`, `new_text`, `replace_all` | Works with both regular and daily notes |
+| `rename_note` | Rename a note | `id`, `new_title` | Only for regular notes, not daily notes |
+| `move_note` | Move note to folder | `id`, `target_folder` | Only for regular notes, not daily notes |
+| `rename_folder` | Rename a folder | `folder_path`, `new_name` | Updates all notes in folder |
+| `update_note` | Update existing note | `id` (required), `title`, `content` | Works with both regular and daily notes |
 
 ## Example Usage in Claude
 
 Once set up, you can ask Claude things like:
 
-- "Show me all my notes"
+- "Show me all my notes" (returns both regular notes and daily notes)
 - "Search for notes containing 'project planning'"
-- "Create a new note titled 'Meeting Notes' in the 'Work' folder"
+- "Get the note titled 'Metrics for fb303'" (exact title match)
+- "Show me all links in today's note" (extracts [[Note Title]] links)
+- "Follow the link to [[Project Ideas]]" (resolves wiki-style links)
+- "Create a new note titled 'Meeting Notes' in the root folder" (creates at "/")
+- "Create a new note titled 'Task List' in the '02. Work' folder"
 - "Get today's daily note"
+- "Create a daily note for tomorrow"
+- "Move note 'note123' to the '02. Work' folder"
+- "Rename the '02. Work' folder to '03. Projects'"
+- "Show me all notes in the root folder"
 - "Update note ID 'note123' with new content"
 
 Claude will automatically use the appropriate NotePlan MCP tools to fulfill these requests.
+
+### Folder Path Examples (Regular Notes Only)
+- Root folder: `"/"` or leave empty
+- Top-level subfolder: `"02. Work"`
+- Nested subfolder: `"02. Work/10. Tasks"`
+
+**Note:** Daily notes are NOT accessed via folder paths. They have dedicated tools.
 
 ## Development
 

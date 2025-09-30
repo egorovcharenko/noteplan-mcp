@@ -79,7 +79,7 @@ server.tool(
 server.tool(
   'get_notes_by_folder',
   {
-    folder: z.string().describe('The folder name to search in'),
+    folder: z.string().describe('The folder path to search in. Use "/" for all notes in root, "02. Work" for a specific subfolder, or "02. Work/10. Tasks" for nested subfolders. Note: Daily notes are accessed via get_todays_note or get_note_by_id, not folder queries.'),
   },
   async ({ folder }) => {
     const notes = noteService.getNotesByFolder(folder);
@@ -100,7 +100,7 @@ server.tool(
   {
     title: z.string().describe('The title of the note'),
     content: z.string().optional().describe('The content of the note'),
-    folder: z.string().optional().describe('The subfolder name within Notes/ (e.g., "02. Work", not "Notes/02. Work"). Leave empty for root Notes folder.'),
+    folder: z.string().optional().describe('The subfolder name (e.g., "02. Work"). Use "/" or leave empty for root folder.'),
   },
   async ({ title, content, folder }) => {
     const newNote = noteService.createNote({ title, content, folder });
@@ -203,7 +203,7 @@ server.tool(
   'move_note',
   {
     id: z.string().describe('The ID of the note to move'),
-    target_folder: z.string().describe('Target folder path. Use "/" for root Notes folder, "02. Work" for top-level folder, or "02. Work/10. Tasks" for subfolder.'),
+    target_folder: z.string().describe('Target folder path. Use "/" for root folder, "02. Work" for top-level folder, or "02. Work/10. Tasks" for subfolder.'),
   },
   async ({ id, target_folder }) => {
     const movedNote = noteService.moveNote(id, target_folder);
@@ -237,6 +237,67 @@ server.tool(
         {
           type: 'text',
           text: JSON.stringify(updatedNote, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// Tool: Rename folder
+server.tool(
+  'rename_folder',
+  {
+    folder_path: z.string().describe('The current path of the folder to rename (e.g., "02. Work", "02. Work/10. Tasks"). Cannot rename root "/" or Calendar.'),
+    new_name: z.string().describe('The new name for the folder (just the name, not a full path). Cannot contain slashes.'),
+  },
+  async ({ folder_path, new_name }) => {
+    const result = noteService.renameFolder(folder_path, new_name);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// Tool: Get note by title
+server.tool(
+  'get_note_by_title',
+  {
+    title: z.string().describe('The exact title of the note to find (case-sensitive)'),
+  },
+  async ({ title }) => {
+    const note = noteService.getNoteByTitle(title);
+    if (!note) {
+      throw new Error(`No note found with title: "${title}"`);
+    }
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(note, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// Tool: Get linked notes
+server.tool(
+  'get_linked_notes',
+  {
+    id: z.string().describe('The ID of the note to extract links from'),
+  },
+  async ({ id }) => {
+    const links = noteService.getLinkedNotes(id);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(links, null, 2),
         },
       ],
     };

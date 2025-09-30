@@ -6,13 +6,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+interface NotePath {
+  type: 'calendar' | 'note';
+  path: string;  // "/" for root, "02. Work" for subfolder, "02. Work/10. Tasks" for nested
+}
+
 interface Note {
   id: string;
   title: string;
   content: string;
   created: string;
   modified: string;
-  folder: string;
+  location: NotePath;
+  folder: string;  // Deprecated: for backward compatibility, use formatLocationString(location)
   filePath?: string;
   filename?: string;
   type?: string;
@@ -54,30 +60,96 @@ let notesCache: Note[] = [];
 let lastCacheUpdate: number = 0;
 const CACHE_DURATION = 5000; // 5 seconds
 
+/**
+ * Helper Functions for NotePath
+ */
+
+/**
+ * Create a NotePath object
+ */
+function createNotePath(type: 'calendar' | 'note', path: string): NotePath {
+  return { type, path };
+}
+
+/**
+ * Convert NotePath to filesystem path
+ */
+function getFileSystemPath(notePath: NotePath): string {
+  const basePath = notePath.type === 'calendar' ? CALENDAR_PATH : NOTES_PATH;
+
+  if (notePath.path === '/') {
+    return basePath;
+  }
+
+  return path.join(basePath, notePath.path);
+}
+
+/**
+ * Format NotePath as display string
+ * Note: Calendar notes are not exposed via folder paths - they're accessed via dedicated tools
+ */
+function formatLocationString(notePath: NotePath): string {
+  // Calendar notes return a special marker - users access them via get_todays_note or get_note_by_id
+  if (notePath.type === 'calendar') {
+    return '[daily-note]';
+  }
+
+  return notePath.path;
+}
+
+/**
+ * Parse string to NotePath (for backward compatibility)
+ * Note: Users should never specify "Calendar" - daily notes are accessed via dedicated tools
+ */
+function parseLocationString(str: string): NotePath {
+  // Reject Calendar paths from user input - calendar notes are managed via dedicated tools
+  if (str === 'Calendar' || str.startsWith('Calendar/') || str === '[daily-note]') {
+    throw new Error('Cannot specify Calendar folder directly. Use create_daily_note, get_todays_note, or get_note_by_id with date format to work with daily notes.');
+  }
+
+  // Handle root path
+  if (!str || str === '/' || str === '') {
+    return createNotePath('note', '/');
+  }
+
+  // Handle note subfolders
+  return createNotePath('note', str);
+}
+
+/**
+ * Check if path is root
+ */
+function isRootPath(notePath: NotePath): boolean {
+  return notePath.path === '/';
+}
+
 // Mock database for notes - fallback if NotePlan directory not found
 const notesDb: Note[] = [
-  { 
-    id: 'note1', 
-    title: 'Sample Note 1', 
+  {
+    id: 'note1',
+    title: 'Sample Note 1',
     content: 'This is a sample note',
     created: '2023-01-01T12:00:00Z',
     modified: '2023-01-02T14:30:00Z',
-    folder: 'Notes'
+    location: createNotePath('note', '/'),
+    folder: '/'
   },
-  { 
-    id: 'note2', 
-    title: 'Sample Note 2', 
+  {
+    id: 'note2',
+    title: 'Sample Note 2',
     content: 'This is another sample note',
     created: '2023-02-15T09:45:00Z',
     modified: '2023-02-16T11:20:00Z',
-    folder: 'Notes'
+    location: createNotePath('note', '/'),
+    folder: '/'
   },
-  { 
-    id: 'note3', 
-    title: 'Project Ideas', 
+  {
+    id: 'note3',
+    title: 'Project Ideas',
     content: '- Build a note-taking app\n- Learn a new language\n- Write a book',
     created: '2023-03-10T16:15:00Z',
     modified: '2023-03-12T08:00:00Z',
+    location: createNotePath('note', 'Projects'),
     folder: 'Projects'
   }
 ];
@@ -98,13 +170,13 @@ function isNotePlanAvailable(): boolean {
 /**
  * Parse note file (markdown or text) to extract metadata
  */
-function parseNoteFile(filePath: string, folder: string): Note | null {
+function parseNoteFile(filePath: string, location: NotePath): Note | null {
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     const stats = fs.statSync(filePath);
     const ext = path.extname(filePath);
     const filename = path.basename(filePath, ext);
-    
+
     // Extract title from frontmatter or first heading or use filename
     const lines = content.split('\n');
     let title = filename;
@@ -135,17 +207,18 @@ function parseNoteFile(filePath: string, folder: string): Note | null {
         }
       }
     }
-    
+
     // Generate ID from filename
-    const id = folder === 'Calendar' ? `calendar-${filename}` : `note-${filename}`;
-    
+    const id = location.type === 'calendar' ? `calendar-${filename}` : `note-${filename}`;
+
     return {
       id,
       title,
       content,
       created: stats.birthtime.toISOString(),
       modified: stats.mtime.toISOString(),
-      folder,
+      location,
+      folder: formatLocationString(location),  // backward compatibility
       filePath,
       filename
     };
@@ -158,28 +231,30 @@ function parseNoteFile(filePath: string, folder: string): Note | null {
 /**
  * Scan directory for note files (.md and .txt)
  */
-function scanNotesDirectory(dirPath: string, folder: string): Note[] {
+function scanNotesDirectory(dirPath: string, location: NotePath): Note[] {
   const notes: Note[] = [];
-  
+
   try {
     if (!fs.existsSync(dirPath)) {
       return notes;
     }
-    
+
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
-    
+
     for (const item of items) {
       if (item.isFile() && (item.name.endsWith('.md') || item.name.endsWith('.txt'))) {
         const filePath = path.join(dirPath, item.name);
-        const note = parseNoteFile(filePath, folder);
+        const note = parseNoteFile(filePath, location);
         if (note) {
           notes.push(note);
         }
       } else if (item.isDirectory() && !item.name.startsWith('.') && !item.name.startsWith('@')) {
         // Recursively scan subdirectories (but skip hidden and special folders)
+        const subPath = location.path === '/' ? item.name : `${location.path}/${item.name}`;
+        const subLocation = createNotePath(location.type, subPath);
         const subNotes = scanNotesDirectory(
-          path.join(dirPath, item.name), 
-          `${folder}/${item.name}`
+          path.join(dirPath, item.name),
+          subLocation
         );
         notes.push(...subNotes);
       }
@@ -187,7 +262,7 @@ function scanNotesDirectory(dirPath: string, folder: string): Note[] {
   } catch (error) {
     console.error(`Error scanning directory ${dirPath}:`, error);
   }
-  
+
   return notes;
 }
 
@@ -199,17 +274,19 @@ function loadNotesFromFileSystem(): Note[] {
     console.warn('NotePlan directory not found, using mock data');
     return notesDb;
   }
-  
+
   const notes: Note[] = [];
-  
+
   // Load calendar notes
-  const calendarNotes = scanNotesDirectory(CALENDAR_PATH, 'Calendar');
+  const calendarLocation = createNotePath('calendar', '/');
+  const calendarNotes = scanNotesDirectory(CALENDAR_PATH, calendarLocation);
   notes.push(...calendarNotes);
-  
+
   // Load regular notes
-  const regularNotes = scanNotesDirectory(NOTES_PATH, 'Notes');
+  const notesLocation = createNotePath('note', '/');
+  const regularNotes = scanNotesDirectory(NOTES_PATH, notesLocation);
   notes.push(...regularNotes);
-  
+
   return notes.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 }
 
@@ -265,18 +342,73 @@ function getNoteById(id: string): Note | null {
 function searchNotes(query: string): Note[] {
   const notes = getAllNotes();
   const lowerQuery = query.toLowerCase();
-  return notes.filter(note => 
-    note.title.toLowerCase().includes(lowerQuery) || 
+  return notes.filter(note =>
+    note.title.toLowerCase().includes(lowerQuery) ||
     note.content.toLowerCase().includes(lowerQuery)
   );
 }
 
 /**
+ * Get note by exact title match
+ */
+function getNoteByTitle(title: string): Note | null {
+  const notes = getAllNotes();
+  return notes.find(note => note.title === title) || null;
+}
+
+/**
+ * Extract note links from content and resolve them
+ * Supports wiki-style links: [[Note Title]]
+ */
+function getLinkedNotes(noteId: string): { linkText: string; note: Note | null }[] {
+  const sourceNote = getNoteById(noteId);
+  if (!sourceNote) {
+    throw new Error(`Note not found: ${noteId}`);
+  }
+
+  // Extract wiki-style links [[Title]]
+  const wikiLinkPattern = /\[\[([^\]]+)\]\]/g;
+  const links: { linkText: string; note: Note | null }[] = [];
+  const matches = sourceNote.content.matchAll(wikiLinkPattern);
+
+  for (const match of matches) {
+    const linkText = match[1];
+    const linkedNote = getNoteByTitle(linkText);
+    links.push({ linkText, note: linkedNote });
+  }
+
+  return links;
+}
+
+/**
  * Get notes by folder
+ * Note: Only works with regular notes (type='note'). Calendar notes are accessed via dedicated tools.
  */
 function getNotesByFolder(folder: string): Note[] {
   const notes = getAllNotes();
-  return notes.filter(note => note.folder === folder || note.folder.startsWith(folder + '/'));
+  // Parse the folder string to NotePath for comparison
+  // parseLocationString will reject "Calendar" and only return type='note' paths
+  const targetLocation = parseLocationString(folder);
+
+  return notes.filter(note => {
+    // Only match notes of the same type (will always be 'note' since parseLocationString rejects 'calendar')
+    if (note.location.type !== targetLocation.type) {
+      return false;
+    }
+
+    // Exact match
+    if (note.location.path === targetLocation.path) {
+      return true;
+    }
+
+    // For root ("/"), match all regular notes recursively
+    if (targetLocation.path === '/') {
+      return true;
+    }
+
+    // For subfolders, check if note is in that folder or a subdirectory
+    return note.location.path.startsWith(targetLocation.path + '/');
+  });
 }
 
 /**
@@ -286,17 +418,17 @@ function createDailyNote(options: CreateDailyNoteParams = {}): Note {
   const noteDate = options.date ? new Date(options.date) : new Date();
   const dateStr = noteDate.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD format
   const noteId = `calendar-${dateStr}`;
-  
+
   // Check if daily note already exists
   const existingNote = getNoteById(noteId);
   if (existingNote) {
     throw new Error(`Daily note for ${dateStr} already exists`);
   }
-  
+
   const defaultTemplate = `# ${dateStr}
 
 ## Today's Plan
-- [ ] 
+- [ ]
 
 ## Notes
 
@@ -306,21 +438,24 @@ function createDailyNote(options: CreateDailyNoteParams = {}): Note {
 
 ---
 Created: ${noteDate.toISOString()}`;
-  
+
   const content = options.content || defaultTemplate;
-  
+
+  // Daily notes always go in Calendar with root path
+  const location = createNotePath('calendar', '/');
+
   if (isNotePlanAvailable()) {
     // Write to actual NotePlan directory
     const filePath = path.join(CALENDAR_PATH, `${dateStr}.txt`);
     try {
       fs.writeFileSync(filePath, content, 'utf8');
-      
+
       // Clear cache to force refresh
       notesCache = [];
       lastCacheUpdate = 0;
-      
+
       // Return the newly created note
-      return parseNoteFile(filePath, 'Calendar')!;
+      return parseNoteFile(filePath, location)!;
     } catch (error) {
       throw new Error(`Failed to create daily note: ${(error as Error).message}`);
     }
@@ -332,10 +467,11 @@ Created: ${noteDate.toISOString()}`;
       content,
       created: noteDate.toISOString(),
       modified: noteDate.toISOString(),
-      folder: 'Calendar',
+      location,
+      folder: formatLocationString(location),
       type: 'daily'
     };
-    
+
     notesDb.push(newNote);
     return newNote;
   }
@@ -348,49 +484,51 @@ function createNote(noteData: CreateNoteParams): Note {
   if (!noteData.title) {
     throw new Error('Note title is required');
   }
-  
+
   const now = new Date();
   const timestamp = now.toISOString();
-  
+
   // Generate filename from title (sanitize for filesystem)
   const sanitizedTitle = noteData.title
     .replace(/[^a-zA-Z0-9\s-_]/g, '')
     .replace(/\s+/g, '-')
     .substring(0, 50);
-  
+
   const filename = `${sanitizedTitle}-${Date.now()}`;
   const noteId = `note-${filename}`;
-  
+
   // Prepare content with title as markdown-style header
-  const content = noteData.content ? 
-    `# ${noteData.title}\n\n${noteData.content}` : 
+  const content = noteData.content ?
+    `# ${noteData.title}\n\n${noteData.content}` :
     `# ${noteData.title}\n\n`;
-  
+
+  // Parse folder string to NotePath (always type='note')
+  const location = parseLocationString(noteData.folder || '/');
+  // Force type to be 'note' (can't create notes in calendar via this function)
+  if (location.type !== 'note') {
+    throw new Error('Cannot create regular notes in Calendar folder. Use createDailyNote instead.');
+  }
+
   if (isNotePlanAvailable()) {
-    // Determine target directory
-    const targetFolder = noteData.folder || 'Notes';
-    let targetPath = NOTES_PATH;
-    
-    if (targetFolder !== 'Notes' && targetFolder !== 'Calendar') {
-      targetPath = path.join(NOTES_PATH, targetFolder);
-      
-      // Create subfolder if it doesn't exist
-      if (!fs.existsSync(targetPath)) {
-        fs.mkdirSync(targetPath, { recursive: true });
-      }
+    // Get filesystem path for the location
+    const targetPath = getFileSystemPath(location);
+
+    // Create subfolder if it doesn't exist and not root
+    if (location.path !== '/' && !fs.existsSync(targetPath)) {
+      fs.mkdirSync(targetPath, { recursive: true });
     }
-    
+
     const filePath = path.join(targetPath, `${filename}.txt`);
-    
+
     try {
       fs.writeFileSync(filePath, content, 'utf8');
-      
+
       // Clear cache to force refresh
       notesCache = [];
       lastCacheUpdate = 0;
-      
+
       // Return the newly created note
-      return parseNoteFile(filePath, targetFolder)!;
+      return parseNoteFile(filePath, location)!;
     } catch (error) {
       throw new Error(`Failed to create note: ${(error as Error).message}`);
     }
@@ -402,9 +540,10 @@ function createNote(noteData: CreateNoteParams): Note {
       content,
       created: timestamp,
       modified: timestamp,
-      folder: noteData.folder || 'Notes'
+      location,
+      folder: formatLocationString(location)
     };
-    
+
     notesDb.push(newNote);
     return newNote;
   }
@@ -451,13 +590,13 @@ function updateNote(id: string, updates: UpdateNoteParams): Note {
       
       // Write updated content to file
       fs.writeFileSync(existingNote.filePath, newContent, 'utf8');
-      
+
       // Clear cache to force refresh
       notesCache = [];
       lastCacheUpdate = 0;
-      
+
       // Return updated note
-      return parseNoteFile(existingNote.filePath, existingNote.folder)!;
+      return parseNoteFile(existingNote.filePath, existingNote.location)!;
     } catch (error) {
       throw new Error(`Failed to update note: ${(error as Error).message}`);
     }
@@ -526,7 +665,7 @@ function renameNote(id: string, newTitle: string): Note {
   }
 
   // Don't allow renaming daily notes (calendar notes)
-  if (existingNote.folder === 'Calendar' || id.startsWith('calendar-')) {
+  if (existingNote.location.type === 'calendar' || id.startsWith('calendar-')) {
     throw new Error('Cannot rename daily notes. Daily notes use date-based filenames.');
   }
 
@@ -584,8 +723,7 @@ function renameNote(id: string, newTitle: string): Note {
       lastCacheUpdate = 0;
 
       // Return the renamed note
-      const folderName = existingNote.folder;
-      return parseNoteFile(newFilePath, folderName)!;
+      return parseNoteFile(newFilePath, existingNote.location)!;
     } catch (error) {
       throw new Error(`Failed to rename note: ${(error as Error).message}`);
     }
@@ -626,7 +764,7 @@ function moveNote(id: string, targetFolder: string): Note {
   }
 
   // Don't allow moving daily notes (calendar notes)
-  if (existingNote.folder === 'Calendar' || id.startsWith('calendar-')) {
+  if (existingNote.location.type === 'calendar' || id.startsWith('calendar-')) {
     throw new Error('Cannot move daily notes. Daily notes must remain in the Calendar folder.');
   }
 
@@ -634,26 +772,22 @@ function moveNote(id: string, targetFolder: string): Note {
     throw new Error('Cannot move note: file path not available');
   }
 
-  // Normalize target folder: "/" means root, otherwise use as-is
-  let normalizedFolder = targetFolder === '/' ? '' : targetFolder;
+  // Parse target folder to NotePath
+  const targetLocation = parseLocationString(targetFolder);
 
-  // Remove leading/trailing slashes
-  normalizedFolder = normalizedFolder.replace(/^\/+|\/+$/g, '');
+  // Ensure we're moving to a note folder, not calendar
+  if (targetLocation.type !== 'note') {
+    throw new Error('Cannot move notes to Calendar folder. Only daily notes belong in Calendar.');
+  }
 
   if (isNotePlanAvailable()) {
     try {
-      // Determine target directory
-      let targetPath = NOTES_PATH;
-      let folderName = 'Notes';
+      // Get filesystem path for target location
+      const targetPath = getFileSystemPath(targetLocation);
 
-      if (normalizedFolder && normalizedFolder !== '') {
-        targetPath = path.join(NOTES_PATH, normalizedFolder);
-        folderName = normalizedFolder;
-
-        // Create target folder if it doesn't exist
-        if (!fs.existsSync(targetPath)) {
-          fs.mkdirSync(targetPath, { recursive: true });
-        }
+      // Create target folder if it doesn't exist and not root
+      if (targetLocation.path !== '/' && !fs.existsSync(targetPath)) {
+        fs.mkdirSync(targetPath, { recursive: true });
       }
 
       const filename = path.basename(existingNote.filePath);
@@ -674,7 +808,7 @@ function moveNote(id: string, targetFolder: string): Note {
       lastCacheUpdate = 0;
 
       // Return the moved note
-      return parseNoteFile(newFilePath, folderName)!;
+      return parseNoteFile(newFilePath, targetLocation)!;
     } catch (error) {
       throw new Error(`Failed to move note: ${(error as Error).message}`);
     }
@@ -686,10 +820,10 @@ function moveNote(id: string, targetFolder: string): Note {
     }
 
     const note = notesDb[noteIndex];
-    const folderName = normalizedFolder || 'Notes';
     const updatedNote: Note = {
       ...note,
-      folder: folderName,
+      location: targetLocation,
+      folder: formatLocationString(targetLocation),
       modified: new Date().toISOString()
     };
 
@@ -698,15 +832,136 @@ function moveNote(id: string, targetFolder: string): Note {
   }
 }
 
+/**
+ * Rename a folder
+ */
+function renameFolder(oldFolderPath: string, newFolderName: string): { success: boolean; affectedNotes: number; message: string } {
+  // Parse old folder path to NotePath
+  const oldLocation = parseLocationString(oldFolderPath);
+
+  // Cannot rename Calendar folder
+  if (oldLocation.type === 'calendar') {
+    throw new Error('Cannot rename Calendar folder. Calendar is a system folder for daily notes.');
+  }
+
+  // Cannot rename root folder
+  if (oldLocation.path === '/') {
+    throw new Error('Cannot rename root folder.');
+  }
+
+  // Validate new folder name (no slashes, no special characters)
+  const sanitizedNewName = newFolderName.trim();
+  if (!sanitizedNewName) {
+    throw new Error('New folder name cannot be empty.');
+  }
+
+  if (sanitizedNewName.includes('/')) {
+    throw new Error('Folder name cannot contain slashes. To move to a different parent folder, use move operations on individual notes.');
+  }
+
+  if (sanitizedNewName === 'Calendar') {
+    throw new Error('Cannot use "Calendar" as folder name. This is reserved for daily notes.');
+  }
+
+  // Calculate new path
+  const pathParts = oldLocation.path.split('/');
+  pathParts[pathParts.length - 1] = sanitizedNewName;
+  const newPath = pathParts.join('/');
+
+  const newLocation = createNotePath('note', newPath);
+
+  if (!isNotePlanAvailable()) {
+    // Fallback to mock database
+    const affectedNotes = notesDb.filter(note =>
+      note.location.type === 'note' &&
+      (note.location.path === oldLocation.path || note.location.path.startsWith(oldLocation.path + '/'))
+    );
+
+    // Update all affected notes
+    affectedNotes.forEach(note => {
+      const noteIndex = notesDb.findIndex(n => n.id === note.id);
+      if (noteIndex !== -1) {
+        let updatedPath: string;
+        if (note.location.path === oldLocation.path) {
+          updatedPath = newPath;
+        } else {
+          // Update subfolders
+          updatedPath = note.location.path.replace(oldLocation.path + '/', newPath + '/');
+        }
+
+        const updatedLocation = createNotePath('note', updatedPath);
+        notesDb[noteIndex] = {
+          ...note,
+          location: updatedLocation,
+          folder: formatLocationString(updatedLocation),
+          modified: new Date().toISOString()
+        };
+      }
+    });
+
+    return {
+      success: true,
+      affectedNotes: affectedNotes.length,
+      message: `Folder renamed from "${oldLocation.path}" to "${newPath}". ${affectedNotes.length} note(s) updated.`
+    };
+  }
+
+  // Real filesystem operations
+  try {
+    const oldFolderFsPath = getFileSystemPath(oldLocation);
+    const newFolderFsPath = getFileSystemPath(newLocation);
+
+    // Check if old folder exists
+    if (!fs.existsSync(oldFolderFsPath)) {
+      throw new Error(`Folder "${oldLocation.path}" does not exist.`);
+    }
+
+    // Check if it's actually a directory
+    if (!fs.statSync(oldFolderFsPath).isDirectory()) {
+      throw new Error(`"${oldLocation.path}" is not a folder.`);
+    }
+
+    // Check if new folder name already exists
+    if (fs.existsSync(newFolderFsPath)) {
+      throw new Error(`A folder named "${newPath}" already exists.`);
+    }
+
+    // Count affected notes before renaming
+    const allNotes = getAllNotes();
+    const affectedNotes = allNotes.filter(note =>
+      note.location.type === 'note' &&
+      (note.location.path === oldLocation.path || note.location.path.startsWith(oldLocation.path + '/'))
+    );
+
+    // Rename the folder
+    fs.renameSync(oldFolderFsPath, newFolderFsPath);
+
+    // Clear cache to force refresh (all notes will be re-scanned with new paths)
+    notesCache = [];
+    lastCacheUpdate = 0;
+
+    return {
+      success: true,
+      affectedNotes: affectedNotes.length,
+      message: `Folder renamed from "${oldLocation.path}" to "${newPath}". ${affectedNotes.length} note(s) updated.`
+    };
+  } catch (error) {
+    throw new Error(`Failed to rename folder: ${(error as Error).message}`);
+  }
+}
+
 export const noteService = {
   getAllNotes,
   getNoteById,
+  getNoteByTitle,
   searchNotes,
+  getLinkedNotes,
   getNotesByFolder,
   createDailyNote,
   createNote,
   updateNote,
   editNote,
   renameNote,
-  moveNote
+  moveNote,
+  renameFolder
 };
