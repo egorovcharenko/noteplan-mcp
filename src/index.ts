@@ -178,6 +178,26 @@ server.tool(
   }
 );
 
+// Tool: Rename note
+server.tool(
+  'rename_note',
+  {
+    id: z.string().describe('The ID of the note to rename'),
+    new_title: z.string().describe('The new title for the note'),
+  },
+  async ({ id, new_title }) => {
+    const renamedNote = noteService.renameNote(id, new_title);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(renamedNote, null, 2),
+        },
+      ],
+    };
+  }
+);
+
 // Tool: Update note
 server.tool(
   'update_note',

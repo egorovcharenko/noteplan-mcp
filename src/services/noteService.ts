@@ -497,6 +497,106 @@ function editNote(id: string, params: EditNoteParams): Note {
   return updateNote(id, { content });
 }
 
+/**
+ * Rename a note (changes title, filename, and updates markdown header)
+ */
+function renameNote(id: string, newTitle: string): Note {
+  const existingNote = getNoteById(id);
+  if (!existingNote) {
+    throw new Error(`Note with id ${id} not found`);
+  }
+
+  // Don't allow renaming daily notes (calendar notes)
+  if (existingNote.folder === 'Calendar' || id.startsWith('calendar-')) {
+    throw new Error('Cannot rename daily notes. Daily notes use date-based filenames.');
+  }
+
+  if (!existingNote.filePath) {
+    throw new Error('Cannot rename note: file path not available');
+  }
+
+  if (isNotePlanAvailable()) {
+    try {
+      // Generate new filename from title (sanitize for filesystem)
+      const sanitizedTitle = newTitle
+        .replace(/[^a-zA-Z0-9\s-_]/g, '')
+        .replace(/\s+/g, '-')
+        .substring(0, 50);
+
+      const ext = path.extname(existingNote.filePath);
+      const dirPath = path.dirname(existingNote.filePath);
+      const newFilePath = path.join(dirPath, `${sanitizedTitle}${ext}`);
+
+      // Check if new filename already exists
+      if (fs.existsSync(newFilePath) && newFilePath !== existingNote.filePath) {
+        throw new Error(`A note with the filename "${sanitizedTitle}${ext}" already exists in this folder`);
+      }
+
+      // Update content with new title in markdown header
+      let content = existingNote.content;
+      const lines = content.split('\n');
+      let headerUpdated = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('# ')) {
+          lines[i] = `# ${newTitle}`;
+          headerUpdated = true;
+          break;
+        }
+      }
+
+      // If no header found, add one at the beginning
+      if (!headerUpdated) {
+        lines.unshift(`# ${newTitle}`, '');
+      }
+
+      content = lines.join('\n');
+
+      // Write updated content to file
+      fs.writeFileSync(existingNote.filePath, content, 'utf8');
+
+      // Rename the file if filename is different
+      if (newFilePath !== existingNote.filePath) {
+        fs.renameSync(existingNote.filePath, newFilePath);
+      }
+
+      // Clear cache to force refresh
+      notesCache = [];
+      lastCacheUpdate = 0;
+
+      // Return the renamed note
+      const folderName = existingNote.folder;
+      return parseNoteFile(newFilePath, folderName)!;
+    } catch (error) {
+      throw new Error(`Failed to rename note: ${(error as Error).message}`);
+    }
+  } else {
+    // Fallback to mock database
+    const noteIndex = notesDb.findIndex(note => note.id === id);
+    if (noteIndex === -1) {
+      throw new Error(`Note with id ${id} not found`);
+    }
+
+    const note = notesDb[noteIndex];
+    const sanitizedTitle = newTitle
+      .replace(/[^a-zA-Z0-9\s-_]/g, '')
+      .replace(/\s+/g, '-')
+      .substring(0, 50);
+
+    const newId = `note-${sanitizedTitle}`;
+    const updatedNote: Note = {
+      ...note,
+      id: newId,
+      title: newTitle,
+      content: `# ${newTitle}\n\n${note.content.split('\n').slice(2).join('\n')}`,
+      modified: new Date().toISOString()
+    };
+
+    notesDb[noteIndex] = updatedNote;
+    return updatedNote;
+  }
+}
+
 export const noteService = {
   getAllNotes,
   getNoteById,
@@ -505,5 +605,6 @@ export const noteService = {
   createDailyNote,
   createNote,
   updateNote,
-  editNote
+  editNote,
+  renameNote
 };
