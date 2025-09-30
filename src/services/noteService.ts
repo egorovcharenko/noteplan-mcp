@@ -616,6 +616,88 @@ function renameNote(id: string, newTitle: string): Note {
   }
 }
 
+/**
+ * Move a note to a different folder
+ */
+function moveNote(id: string, targetFolder: string): Note {
+  const existingNote = getNoteById(id);
+  if (!existingNote) {
+    throw new Error(`Note with id ${id} not found`);
+  }
+
+  // Don't allow moving daily notes (calendar notes)
+  if (existingNote.folder === 'Calendar' || id.startsWith('calendar-')) {
+    throw new Error('Cannot move daily notes. Daily notes must remain in the Calendar folder.');
+  }
+
+  if (!existingNote.filePath) {
+    throw new Error('Cannot move note: file path not available');
+  }
+
+  // Normalize target folder: "/" means root, otherwise use as-is
+  let normalizedFolder = targetFolder === '/' ? '' : targetFolder;
+
+  // Remove leading/trailing slashes
+  normalizedFolder = normalizedFolder.replace(/^\/+|\/+$/g, '');
+
+  if (isNotePlanAvailable()) {
+    try {
+      // Determine target directory
+      let targetPath = NOTES_PATH;
+      let folderName = 'Notes';
+
+      if (normalizedFolder && normalizedFolder !== '') {
+        targetPath = path.join(NOTES_PATH, normalizedFolder);
+        folderName = normalizedFolder;
+
+        // Create target folder if it doesn't exist
+        if (!fs.existsSync(targetPath)) {
+          fs.mkdirSync(targetPath, { recursive: true });
+        }
+      }
+
+      const filename = path.basename(existingNote.filePath);
+      const newFilePath = path.join(targetPath, filename);
+
+      // Check if file already exists at target location
+      if (fs.existsSync(newFilePath) && newFilePath !== existingNote.filePath) {
+        throw new Error(`A note with the filename "${filename}" already exists in the target folder`);
+      }
+
+      // Move the file
+      if (newFilePath !== existingNote.filePath) {
+        fs.renameSync(existingNote.filePath, newFilePath);
+      }
+
+      // Clear cache to force refresh
+      notesCache = [];
+      lastCacheUpdate = 0;
+
+      // Return the moved note
+      return parseNoteFile(newFilePath, folderName)!;
+    } catch (error) {
+      throw new Error(`Failed to move note: ${(error as Error).message}`);
+    }
+  } else {
+    // Fallback to mock database
+    const noteIndex = notesDb.findIndex(note => note.id === id);
+    if (noteIndex === -1) {
+      throw new Error(`Note with id ${id} not found`);
+    }
+
+    const note = notesDb[noteIndex];
+    const folderName = normalizedFolder || 'Notes';
+    const updatedNote: Note = {
+      ...note,
+      folder: folderName,
+      modified: new Date().toISOString()
+    };
+
+    notesDb[noteIndex] = updatedNote;
+    return updatedNote;
+  }
+}
+
 export const noteService = {
   getAllNotes,
   getNoteById,
@@ -625,5 +707,6 @@ export const noteService = {
   createNote,
   updateNote,
   editNote,
-  renameNote
+  renameNote,
+  moveNote
 };

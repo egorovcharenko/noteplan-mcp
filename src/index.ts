@@ -198,6 +198,26 @@ server.tool(
   }
 );
 
+// Tool: Move note to different folder
+server.tool(
+  'move_note',
+  {
+    id: z.string().describe('The ID of the note to move'),
+    target_folder: z.string().describe('Target folder path. Use "/" for root Notes folder, "02. Work" for top-level folder, or "02. Work/10. Tasks" for subfolder.'),
+  },
+  async ({ id, target_folder }) => {
+    const movedNote = noteService.moveNote(id, target_folder);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(movedNote, null, 2),
+        },
+      ],
+    };
+  }
+);
+
 // Tool: Update note
 server.tool(
   'update_note',
