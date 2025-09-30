@@ -21,7 +21,8 @@ The Message Control Protocol (MCP) server enables Claude to interact with NotePl
 - `get_notes_by_folder` - Get notes from specific folder
 - `create_note` - Create new note
 - `create_daily_note` - Create daily note (use YYYY-MM-DD format like "2025-09-29")
-- `update_note` - Update existing note
+- `edit_note` - Edit note by replacing specific text (similar to Edit tool in Claude Code)
+- `update_note` - Update existing note (full content replacement)
 
 ### Date Formats
 - Daily note IDs use YYYYMMDD format (e.g., "20250929" or "calendar-20250929")

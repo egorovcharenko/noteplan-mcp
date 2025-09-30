@@ -156,6 +156,28 @@ server.tool(
   }
 );
 
+// Tool: Edit note (partial text replacement)
+server.tool(
+  'edit_note',
+  {
+    id: z.string().describe('The ID of the note to edit'),
+    old_text: z.string().describe('The exact text to find and replace'),
+    new_text: z.string().describe('The text to replace it with'),
+    replace_all: z.boolean().optional().describe('Replace all occurrences (default: false). If false and multiple occurrences exist, the operation will fail.'),
+  },
+  async ({ id, old_text, new_text, replace_all = false }) => {
+    const editedNote = noteService.editNote(id, { old_text, new_text, replace_all });
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(editedNote, null, 2),
+        },
+      ],
+    };
+  }
+);
+
 // Tool: Update note
 server.tool(
   'update_note',
@@ -168,7 +190,7 @@ server.tool(
     const updates: any = {};
     if (title !== undefined) updates.title = title;
     if (content !== undefined) updates.content = content;
-    
+
     const updatedNote = noteService.updateNote(id, updates);
     return {
       content: [

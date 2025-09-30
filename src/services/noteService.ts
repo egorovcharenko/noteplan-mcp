@@ -35,6 +35,12 @@ interface UpdateNoteParams {
   folder?: string;
 }
 
+interface EditNoteParams {
+  old_text: string;
+  new_text: string;
+  replace_all?: boolean;
+}
+
 // NotePlan data directory path
 const NOTEPLAN_BASE_PATH = path.join(
   os.homedir(), 
@@ -455,6 +461,42 @@ function updateNote(id: string, updates: UpdateNoteParams): Note {
   }
 }
 
+/**
+ * Edit note by replacing text (similar to Edit tool in Claude Code)
+ */
+function editNote(id: string, params: EditNoteParams): Note {
+  const existingNote = getNoteById(id);
+  if (!existingNote) {
+    throw new Error(`Note with id ${id} not found`);
+  }
+
+  const { old_text, new_text, replace_all = false } = params;
+
+  // Get current content
+  let content = existingNote.content;
+
+  // Check how many occurrences exist
+  const occurrences = (content.match(new RegExp(old_text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+
+  if (occurrences === 0) {
+    throw new Error(`Text not found in note: "${old_text}"`);
+  }
+
+  if (occurrences > 1 && !replace_all) {
+    throw new Error(`Found ${occurrences} occurrences of the text. Set replace_all=true to replace all, or provide more specific text to match exactly one occurrence.`);
+  }
+
+  // Perform replacement
+  if (replace_all) {
+    content = content.replaceAll(old_text, new_text);
+  } else {
+    content = content.replace(old_text, new_text);
+  }
+
+  // Update the note with new content
+  return updateNote(id, { content });
+}
+
 export const noteService = {
   getAllNotes,
   getNoteById,
@@ -462,5 +504,6 @@ export const noteService = {
   getNotesByFolder,
   createDailyNote,
   createNote,
-  updateNote
+  updateNote,
+  editNote
 };
