@@ -105,15 +105,34 @@ function parseNoteFile(filePath: string, folder: string): Note | null {
     const ext = path.extname(filePath);
     const filename = path.basename(filePath, ext);
     
-    // Extract title from first line or use filename
+    // Extract title from frontmatter or first heading or use filename
     const lines = content.split('\n');
     let title = filename;
-    
-    // Look for markdown-style title (# Title)
-    for (const line of lines) {
-      if (line.startsWith('# ') && line.length > 2) {
-        title = line.substring(2).trim();
-        break;
+
+    // First, check for YAML frontmatter (between --- markers)
+    if (lines[0] === '---') {
+      let inFrontmatter = true;
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i] === '---') {
+          inFrontmatter = false;
+          break;
+        }
+        // Look for title field in frontmatter
+        const match = lines[i].match(/^title:\s*(.+)$/);
+        if (match) {
+          title = match[1].trim();
+          break;
+        }
+      }
+    }
+
+    // If no frontmatter title found, look for markdown-style title (# Title)
+    if (title === filename) {
+      for (const line of lines) {
+        if (line.startsWith('# ') && line.length > 2) {
+          title = line.substring(2).trim();
+          break;
+        }
       }
     }
     
