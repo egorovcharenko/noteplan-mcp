@@ -35,6 +35,12 @@ interface CreateDailyNoteParams {
   content?: string;
 }
 
+interface GetDailyNotesParams {
+  start_date?: string; // YYYY-MM-DD format
+  end_date?: string;   // YYYY-MM-DD format
+  limit?: number;      // Maximum number of notes to return
+}
+
 interface UpdateNoteParams {
   title?: string;
   content?: string;
@@ -475,6 +481,39 @@ Created: ${noteDate.toISOString()}`;
     notesDb.push(newNote);
     return newNote;
   }
+}
+
+/**
+ * Get all daily notes (calendar notes), optionally filtered by date range
+ */
+function getDailyNotes(params: GetDailyNotesParams = {}): Note[] {
+  const notes = getAllNotes();
+  let dailyNotes = notes.filter(note => note.location.type === 'calendar');
+
+  // Sort by date (newest first by default)
+  dailyNotes.sort((a, b) => {
+    const dateA = a.filename || '';
+    const dateB = b.filename || '';
+    return dateB.localeCompare(dateA);
+  });
+
+  // Apply date filters if provided
+  if (params.start_date) {
+    const startDate = params.start_date.replace(/-/g, ''); // Convert YYYY-MM-DD to YYYYMMDD
+    dailyNotes = dailyNotes.filter(note => (note.filename || '') >= startDate);
+  }
+
+  if (params.end_date) {
+    const endDate = params.end_date.replace(/-/g, ''); // Convert YYYY-MM-DD to YYYYMMDD
+    dailyNotes = dailyNotes.filter(note => (note.filename || '') <= endDate);
+  }
+
+  // Apply limit if provided
+  if (params.limit && params.limit > 0) {
+    dailyNotes = dailyNotes.slice(0, params.limit);
+  }
+
+  return dailyNotes;
 }
 
 /**
@@ -950,6 +989,53 @@ function renameFolder(oldFolderPath: string, newFolderName: string): { success: 
   }
 }
 
+/**
+ * Create a new folder
+ */
+function createFolder(folderPath: string): { success: boolean; message: string; path: string } {
+  // Parse folder path to NotePath
+  const location = parseLocationString(folderPath);
+
+  // Cannot create Calendar folder
+  if (location.type === 'calendar') {
+    throw new Error('Cannot create Calendar folder. Calendar is a system folder for daily notes.');
+  }
+
+  // Cannot create root folder (already exists)
+  if (location.path === '/') {
+    throw new Error('Root folder already exists. Please specify a subfolder path.');
+  }
+
+  if (!isNotePlanAvailable()) {
+    // In mock mode, just return success
+    return {
+      success: true,
+      message: `Folder "${location.path}" created (mock mode).`,
+      path: location.path
+    };
+  }
+
+  try {
+    const folderFsPath = getFileSystemPath(location);
+
+    // Check if folder already exists
+    if (fs.existsSync(folderFsPath)) {
+      throw new Error(`Folder "${location.path}" already exists.`);
+    }
+
+    // Create the folder (and parent folders if needed)
+    fs.mkdirSync(folderFsPath, { recursive: true });
+
+    return {
+      success: true,
+      message: `Folder "${location.path}" created successfully.`,
+      path: location.path
+    };
+  } catch (error) {
+    throw new Error(`Failed to create folder: ${(error as Error).message}`);
+  }
+}
+
 export const noteService = {
   getAllNotes,
   getNoteById,
@@ -958,10 +1044,12 @@ export const noteService = {
   getLinkedNotes,
   getNotesByFolder,
   createDailyNote,
+  getDailyNotes,
   createNote,
   updateNote,
   editNote,
   renameNote,
   moveNote,
-  renameFolder
+  renameFolder,
+  createFolder
 };

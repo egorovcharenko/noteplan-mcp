@@ -107,6 +107,8 @@ Once configured, you can use these tools in Claude conversations:
 | `get_notes` | Get all notes from NotePlan | None | Returns both regular notes and daily notes |
 | `get_note_by_id` | Get a specific note by ID | `id` (required) | Use YYYYMMDD format for daily notes |
 | `get_note_by_title` | Get a note by exact title | `title` (required) | Case-sensitive exact match |
+| `get_todays_note` | Get today's daily note | None | Quick access to current day's note |
+| `get_daily_notes` | Get all daily notes | `start_date`, `end_date`, `limit` | Filter by date range, returns all daily notes in one response |
 | `search_notes` | Search notes by query | `query` (required) | Searches both regular and daily notes |
 | `get_notes_by_folder` | Get notes from a folder | `folder` (required) | Use "/", "02. Work", etc. Only for regular notes |
 | `get_linked_notes` | Extract and resolve note links | `id` (required) | Finds all [[Note Title]] links in a note |
@@ -116,6 +118,7 @@ Once configured, you can use these tools in Claude conversations:
 | `rename_note` | Rename a note | `id`, `new_title` | Only for regular notes, not daily notes |
 | `move_note` | Move note to folder | `id`, `target_folder` | Only for regular notes, not daily notes |
 | `rename_folder` | Rename a folder | `folder_path`, `new_name` | Updates all notes in folder |
+| `create_folder` | Create a new folder | `folder_path` (required) | Creates parent folders if needed |
 | `update_note` | Update existing note | `id` (required), `title`, `content` | Works with both regular and daily notes |
 
 ## Example Usage in Claude
@@ -127,12 +130,16 @@ Once set up, you can ask Claude things like:
 - "Get the note titled 'Metrics for fb303'" (exact title match)
 - "Show me all links in today's note" (extracts [[Note Title]] links)
 - "Follow the link to [[Project Ideas]]" (resolves wiki-style links)
+- "Get today's daily note"
+- "Get all my daily notes" (returns all daily notes in one response)
+- "Get my daily notes from the last 7 days" (uses limit: 7)
+- "Get daily notes from January 2025" (uses start_date and end_date)
 - "Create a new note titled 'Meeting Notes' in the root folder" (creates at "/")
 - "Create a new note titled 'Task List' in the '02. Work' folder"
-- "Get today's daily note"
 - "Create a daily note for tomorrow"
 - "Move note 'note123' to the '02. Work' folder"
 - "Rename the '02. Work' folder to '03. Projects'"
+- "Create a new folder called '02. Work/Projects'"
 - "Show me all notes in the root folder"
 - "Update note ID 'note123' with new content"
 

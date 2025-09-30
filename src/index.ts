@@ -156,6 +156,27 @@ server.tool(
   }
 );
 
+// Tool: Get daily notes
+server.tool(
+  'get_daily_notes',
+  {
+    start_date: z.string().optional().describe('Start date in YYYY-MM-DD format (e.g., 2025-01-01). Returns notes from this date onwards.'),
+    end_date: z.string().optional().describe('End date in YYYY-MM-DD format (e.g., 2025-12-31). Returns notes up to this date.'),
+    limit: z.number().optional().describe('Maximum number of daily notes to return (newest first). Useful for getting recent notes.'),
+  },
+  async ({ start_date, end_date, limit }) => {
+    const notes = noteService.getDailyNotes({ start_date, end_date, limit });
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(notes, null, 2),
+        },
+      ],
+    };
+  }
+);
+
 // Tool: Edit note (partial text replacement)
 server.tool(
   'edit_note',
@@ -252,6 +273,25 @@ server.tool(
   },
   async ({ folder_path, new_name }) => {
     const result = noteService.renameFolder(folder_path, new_name);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// Tool: Create folder
+server.tool(
+  'create_folder',
+  {
+    folder_path: z.string().describe('The path of the folder to create (e.g., "02. Work", "02. Work/10. Tasks"). Parent folders will be created if needed. Cannot create root "/" or Calendar.'),
+  },
+  async ({ folder_path }) => {
+    const result = noteService.createFolder(folder_path);
     return {
       content: [
         {
